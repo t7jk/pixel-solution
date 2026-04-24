@@ -28,7 +28,7 @@ function pixel_solution_render_settings_page() {
 	$status_pixel = $pixel_id   ? '<span style="color:green;">&#9679; Set</span>' : '<span style="color:red;">&#9679; Missing</span>';
 	$status_token = $capi_token ? '<span style="color:green;">&#9679; Set</span>' : '<span style="color:red;">&#9679; Missing</span>';
 
-	$em_url = 'https://business.facebook.com/events_manager2/list/pixel/';
+	$em_url = 'https://www.facebook.com/events_manager2/list/pixel/';
 	?>
 	<div class="wrap">
 		<h1>Pixel Solution <span style="font-size:14px;font-weight:normal;color:#666;">by Tomasz Kalinowski</span></h1>
