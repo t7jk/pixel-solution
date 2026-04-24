@@ -61,25 +61,23 @@ class MCS_Events {
 
 	/**
 	 * CAPI Lead — odpala server-side podczas przetwarzania formularza CF7.
-	 * Używa wpcf7_before_send_mail zamiast wpcf7_mail_sent, bo działa
-	 * niezależnie od tego czy CF7 zdoła wysłać email (problem na wielu hostingach).
+	 * event_id pochodzi z ukrytego pola wstrzykniętego przez JS przed submitem,
+	 * co umożliwia deduplikację z pikselem przeglądarkowym.
 	 */
 	public function handle_lead_cf7( $contact_form ) {
-		$event_id = uniqid( 'mcs_lead_', true );
-
-		// Zapisujemy event_id w sesji PHP, żeby JS po stronie przeglądarki
-		// mógł użyć tego samego ID do deduplikacji.
-		if ( ! session_id() ) {
-			session_start();
-		}
-		$_SESSION['pixel_solution_lead_event_id'] = $event_id;
+		$submission  = WPCF7_Submission::get_instance();
+		$posted_data = $submission ? $submission->get_posted_data() : [];
+		$event_id    = ! empty( $posted_data['mcs_lead_event_id'] )
+			? sanitize_text_field( $posted_data['mcs_lead_event_id'] )
+			: uniqid( 'mcs_lead_', true );
 
 		$this->capi->send_event( 'Lead', [], $event_id );
 	}
 
 	/**
-	 * Wstrzykuje JS nasłuchujący na zdarzenie wpcf7mailsent (natywne CF7 AJAX).
-	 * Odpalenie browser-side Lead dopiero po potwierdzeniu z serwera CF7.
+	 * Wstrzykuje JS który:
+	 * 1. Przed submitem generuje event_id i wstawia go jako ukryte pole formularza.
+	 * 2. Po potwierdzeniu wysyłki (wpcf7mailsent) odpala fbq Lead z tym samym event_id.
 	 */
 	public function inject_cf7_lead_listener() {
 		if ( ! get_option( 'mcs_pixel_id', '' ) ) {
@@ -87,12 +85,46 @@ class MCS_Events {
 		}
 		?>
 		<script>
-		document.addEventListener('wpcf7mailsent', function(event) {
-			if (typeof fbq === 'undefined') return;
-			// event_id generujemy po stronie JS — deduplikacja przez CAPI event_id
-			// nie jest możliwa cross-request, więc wysyłamy bez eventID (brak ryzyka duplikatu bo CAPI Lead ma swój ID)
-			fbq('track', 'Lead');
-		}, false);
+		(function() {
+			function mcsGenEventId() {
+				if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+					return 'mcs_lead_' + crypto.randomUUID();
+				}
+				return 'mcs_lead_' + Math.random().toString(36).slice(2, 11) + '_' + Date.now();
+			}
+
+			function mcsInjectEventId(form) {
+				var existing = form.querySelector('input[name="mcs_lead_event_id"]');
+				if (existing) {
+					existing.value = mcsGenEventId();
+					return;
+				}
+				var input = document.createElement('input');
+				input.type  = 'hidden';
+				input.name  = 'mcs_lead_event_id';
+				input.value = mcsGenEventId();
+				form.appendChild(input);
+			}
+
+			document.addEventListener('DOMContentLoaded', function() {
+				document.querySelectorAll('.wpcf7-form').forEach(mcsInjectEventId);
+			});
+
+			document.addEventListener('wpcf7mailsent', function(e) {
+				if (typeof fbq === 'undefined') return;
+				var form    = e.target.querySelector('form') || e.target;
+				var idInput = e.target.querySelector('input[name="mcs_lead_event_id"]');
+				var eventId = idInput ? idInput.value : '';
+
+				if (eventId) {
+					fbq('track', 'Lead', {}, {eventID: eventId});
+					// Regeneruj ID na wypadek kolejnego wysłania bez przeładowania
+					if (idInput) idInput.value = mcsGenEventId();
+				} else {
+					fbq('track', 'Lead');
+				}
+			}, false);
+		})();
 		</script>
 		<?php
 	}
