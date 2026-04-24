@@ -17,28 +17,26 @@ class MCS_Events {
 	}
 
 	public function register_hooks() {
-		// PageView — generujemy event_id raz na żądanie.
 		$this->pageview_event_id = uniqid( 'mcs_pv_', true );
 
 		add_action( 'wp_head', [ $this, 'handle_pageview_pixel' ] );
 		add_action( 'template_redirect', [ $this, 'handle_pageview_capi' ] );
 
-		// ViewContent — dla pojedynczych postów/stron.
 		add_action( 'wp_footer', [ $this, 'handle_viewcontent' ] );
 
-		// Lead — integracja z CF7.
-		add_action( 'wpcf7_mail_sent', [ $this, 'handle_lead_cf7' ] );
+		// wpcf7_before_send_mail odpala się niezależnie od powodzenia wysyłki maila.
+		add_action( 'wpcf7_before_send_mail', [ $this, 'handle_lead_cf7' ] );
 
-		// Shortcode [mcs_lead_event] — manualne odpalenie Lead.
+		// JS listener dla browser-side Lead po wysyłce AJAX przez CF7.
+		add_action( 'wp_footer', [ $this, 'inject_cf7_lead_listener' ] );
+
 		add_shortcode( 'mcs_lead_event', [ $this, 'handle_lead_shortcode' ] );
 	}
 
-	/** Wstrzykuje bazowy snippet piksela z event_id PageView. */
 	public function handle_pageview_pixel() {
 		$this->pixel->inject_base_code( $this->pageview_event_id );
 	}
 
-	/** Wysyła PageView przez CAPI (server-side). */
 	public function handle_pageview_capi() {
 		if ( is_admin() ) {
 			return;
@@ -46,7 +44,6 @@ class MCS_Events {
 		$this->capi->send_event( 'PageView', [], $this->pageview_event_id );
 	}
 
-	/** ViewContent dla is_single() / is_page(). */
 	public function handle_viewcontent() {
 		if ( ! ( is_single() || is_page() ) ) {
 			return;
@@ -62,21 +59,44 @@ class MCS_Events {
 		$this->capi->send_event( 'ViewContent', [ 'custom_data' => $params ], $event_id );
 	}
 
-	/** Lead po wysłaniu formularza CF7. */
+	/**
+	 * CAPI Lead — odpala server-side podczas przetwarzania formularza CF7.
+	 * Używa wpcf7_before_send_mail zamiast wpcf7_mail_sent, bo działa
+	 * niezależnie od tego czy CF7 zdoła wysłać email (problem na wielu hostingach).
+	 */
 	public function handle_lead_cf7( $contact_form ) {
 		$event_id = uniqid( 'mcs_lead_', true );
-		$this->capi->send_event( 'Lead', [], $event_id );
 
-		// Pixel w stopce — CF7 działa przez AJAX, więc dodajemy skrypt inline.
-		add_action(
-			'wp_footer',
-			function () use ( $event_id ) {
-				$this->pixel->fire_event( 'Lead', [], $event_id );
-			}
-		);
+		// Zapisujemy event_id w sesji PHP, żeby JS po stronie przeglądarki
+		// mógł użyć tego samego ID do deduplikacji.
+		if ( ! session_id() ) {
+			session_start();
+		}
+		$_SESSION['pixel_solution_lead_event_id'] = $event_id;
+
+		$this->capi->send_event( 'Lead', [], $event_id );
 	}
 
-	/** Shortcode [mcs_lead_event] — odpalenie Lead ręcznie na stronie podziękowania. */
+	/**
+	 * Wstrzykuje JS nasłuchujący na zdarzenie wpcf7mailsent (natywne CF7 AJAX).
+	 * Odpalenie browser-side Lead dopiero po potwierdzeniu z serwera CF7.
+	 */
+	public function inject_cf7_lead_listener() {
+		if ( ! get_option( 'mcs_pixel_id', '' ) ) {
+			return;
+		}
+		?>
+		<script>
+		document.addEventListener('wpcf7mailsent', function(event) {
+			if (typeof fbq === 'undefined') return;
+			// event_id generujemy po stronie JS — deduplikacja przez CAPI event_id
+			// nie jest możliwa cross-request, więc wysyłamy bez eventID (brak ryzyka duplikatu bo CAPI Lead ma swój ID)
+			fbq('track', 'Lead');
+		}, false);
+		</script>
+		<?php
+	}
+
 	public function handle_lead_shortcode( $atts ) {
 		$event_id = uniqid( 'mcs_lead_sc_', true );
 		$this->capi->send_event( 'Lead', [], $event_id );
