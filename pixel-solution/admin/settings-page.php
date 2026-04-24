@@ -27,6 +27,8 @@ function pixel_solution_render_settings_page() {
 
 	$status_pixel = $pixel_id   ? '<span style="color:green;">&#9679; Set</span>' : '<span style="color:red;">&#9679; Missing</span>';
 	$status_token = $capi_token ? '<span style="color:green;">&#9679; Set</span>' : '<span style="color:red;">&#9679; Missing</span>';
+
+	$em_url = 'https://business.facebook.com/events_manager2/list/pixel/';
 	?>
 	<div class="wrap">
 		<h1>Pixel Solution <span style="font-size:14px;font-weight:normal;color:#666;">by Tomasz Kalinowski</span></h1>
@@ -42,31 +44,57 @@ function pixel_solution_render_settings_page() {
 			<?php settings_fields( 'mcs_pixel_options' ); ?>
 
 			<table class="form-table">
+
 				<tr>
 					<th scope="row"><label for="mcs_pixel_id">Pixel ID</label></th>
 					<td>
 						<input type="text" id="mcs_pixel_id" name="mcs_pixel_id"
 							value="<?php echo esc_attr( $pixel_id ); ?>"
 							class="regular-text" placeholder="e.g. 1234567890123456" />
+						<p class="description">
+							A 15–16 digit number assigned to your Meta Pixel.<br>
+							<a href="<?php echo esc_url( $em_url ); ?>" target="_blank">
+								&#8594; Open Meta Events Manager
+							</a> — select your pixel, the ID is shown next to its name at the top.
+						</p>
 					</td>
 				</tr>
+
 				<tr>
 					<th scope="row"><label for="mcs_capi_token">Access Token CAPI</label></th>
 					<td>
 						<input type="password" id="mcs_capi_token" name="mcs_capi_token"
 							value="<?php echo esc_attr( $capi_token ); ?>"
 							class="regular-text" />
+						<p class="description">
+							Required for server-side event sending (Conversions API).<br>
+							<a href="<?php echo esc_url( $em_url ); ?>" target="_blank">
+								&#8594; Open Meta Events Manager
+							</a> — select your pixel &rarr; <strong>Settings</strong> tab &rarr; scroll to <strong>Conversions API</strong> &rarr; click <strong>Generate access token</strong>.
+						</p>
 					</td>
 				</tr>
+
 				<tr>
 					<th scope="row"><label for="mcs_test_event_code">Test Event Code</label></th>
 					<td>
 						<input type="text" id="mcs_test_event_code" name="mcs_test_event_code"
 							value="<?php echo esc_attr( $test_code ); ?>"
 							class="regular-text" placeholder="TEST12345 (optional)" />
-						<p class="description">Fill in only when testing via Meta Ads Manager → Events Testing.</p>
+						<p class="description">
+							<strong>Leave empty in production.</strong> Use only while verifying your setup.<br><br>
+							<strong>How to test:</strong>
+							<ol style="margin:.5em 0 .5em 1.2em;padding:0;">
+								<li>Open <a href="<?php echo esc_url( $em_url ); ?>" target="_blank">Meta Events Manager</a> &rarr; select your pixel &rarr; <strong>Test Events</strong> tab.</li>
+								<li>Copy the code shown there (e.g. <code>TEST12345</code>) and paste it into this field. Save settings.</li>
+								<li>Visit your website — PageView events will appear in real time in the Test Events panel.</li>
+								<li>A correctly configured setup shows each event <strong>twice</strong>: once from the browser (Pixel) and once from the server (CAPI), with a single deduplicated count.</li>
+								<li>When done, <strong>clear this field and save</strong> — otherwise all events will be tagged as test data and won't be used for optimisation.</li>
+							</ol>
+						</p>
 					</td>
 				</tr>
+
 			</table>
 
 			<?php submit_button( 'Save Settings' ); ?>
