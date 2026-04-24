@@ -3,8 +3,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-add_action( 'admin_init', 'mcs_pixel_register_settings' );
-function mcs_pixel_register_settings() {
+add_action( 'admin_init', 'pixel_solution_register_settings' );
+function pixel_solution_register_settings() {
 	register_setting( 'mcs_pixel_options', 'mcs_pixel_id', [
 		'sanitize_callback' => 'sanitize_text_field',
 	] );
@@ -16,7 +16,7 @@ function mcs_pixel_register_settings() {
 	] );
 }
 
-function mcs_pixel_render_settings_page() {
+function pixel_solution_render_settings_page() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return;
 	}
@@ -25,11 +25,11 @@ function mcs_pixel_render_settings_page() {
 	$capi_token = get_option( 'mcs_capi_token', '' );
 	$test_code  = get_option( 'mcs_test_event_code', '' );
 
-	$status_pixel = $pixel_id   ? '<span style="color:green;">&#9679; Uzupełniony</span>' : '<span style="color:red;">&#9679; Brak</span>';
-	$status_token = $capi_token ? '<span style="color:green;">&#9679; Uzupełniony</span>' : '<span style="color:red;">&#9679; Brak</span>';
+	$status_pixel = $pixel_id   ? '<span style="color:green;">&#9679; Set</span>' : '<span style="color:red;">&#9679; Missing</span>';
+	$status_token = $capi_token ? '<span style="color:green;">&#9679; Set</span>' : '<span style="color:red;">&#9679; Missing</span>';
 	?>
 	<div class="wrap">
-		<h1>MCS Meta Pixel &amp; CAPI</h1>
+		<h1>Pixel Solution <span style="font-size:14px;font-weight:normal;color:#666;">by Tomasz Kalinowski</span></h1>
 
 		<table class="widefat" style="max-width:500px;margin-bottom:20px;">
 			<tbody>
@@ -47,7 +47,7 @@ function mcs_pixel_render_settings_page() {
 					<td>
 						<input type="text" id="mcs_pixel_id" name="mcs_pixel_id"
 							value="<?php echo esc_attr( $pixel_id ); ?>"
-							class="regular-text" placeholder="np. 1234567890123456" />
+							class="regular-text" placeholder="e.g. 1234567890123456" />
 					</td>
 				</tr>
 				<tr>
@@ -63,14 +63,21 @@ function mcs_pixel_render_settings_page() {
 					<td>
 						<input type="text" id="mcs_test_event_code" name="mcs_test_event_code"
 							value="<?php echo esc_attr( $test_code ); ?>"
-							class="regular-text" placeholder="TEST12345 (opcjonalnie)" />
-						<p class="description">Wypełnij tylko podczas testów w Meta Ads Manager → Testowanie zdarzeń.</p>
+							class="regular-text" placeholder="TEST12345 (optional)" />
+						<p class="description">Fill in only when testing via Meta Ads Manager → Events Testing.</p>
 					</td>
 				</tr>
 			</table>
 
-			<?php submit_button( 'Zapisz ustawienia' ); ?>
+			<?php submit_button( 'Save Settings' ); ?>
 		</form>
+
+		<hr style="margin-top:30px;" />
+		<p style="color:#888;font-size:12px;">
+			Pixel Solution <?php echo PIXEL_SOLUTION_VERSION; ?> &nbsp;|&nbsp;
+			<a href="https://x.com/tomas3man" target="_blank">@tomas3man on X</a> &nbsp;|&nbsp;
+			<a href="https://github.com/t7jk/pixel-solution" target="_blank">GitHub</a>
+		</p>
 	</div>
 	<?php
 }
