@@ -61,7 +61,7 @@ class MCS_Events {
 	}
 
 	public function handle_viewcontent() {
-		if ( ! ( is_single() || is_page() ) ) {
+		if ( is_front_page() || ! ( is_single() || is_page() ) ) {
 			return;
 		}
 		if ( ! get_option( 'mcs_pixel_id', '' ) ) {
