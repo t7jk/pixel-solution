@@ -8,21 +8,18 @@ class MCS_Events {
 	private $pixel;
 	private $capi;
 
-	/** @var string Event ID dla bieżącego żądania (PageView). */
-	private $pageview_event_id = '';
-
 	public function __construct( MCS_Pixel $pixel, MCS_CAPI $capi ) {
 		$this->pixel = $pixel;
 		$this->capi  = $capi;
 	}
 
 	public function register_hooks() {
-		$this->pageview_event_id = uniqid( 'mcs_pv_', true );
-
-		add_action( 'wp_head', [ $this, 'handle_pageview_pixel' ] );
-		add_action( 'template_redirect', [ $this, 'handle_pageview_capi' ] );
-
+		add_action( 'wp_head', [ $this, 'handle_pageview' ] );
 		add_action( 'wp_footer', [ $this, 'handle_viewcontent' ] );
+
+		// AJAX endpoint dla CAPI — działa nawet gdy strona pochodzi z cache.
+		add_action( 'wp_ajax_nopriv_mcs_capi_event', [ $this, 'handle_ajax_capi' ] );
+		add_action( 'wp_ajax_mcs_capi_event',        [ $this, 'handle_ajax_capi' ] );
 
 		// wpcf7_before_send_mail odpala się niezależnie od powodzenia wysyłki maila.
 		add_action( 'wpcf7_before_send_mail', [ $this, 'handle_lead_cf7' ] );
@@ -33,30 +30,95 @@ class MCS_Events {
 		add_shortcode( 'mcs_lead_event', [ $this, 'handle_lead_shortcode' ] );
 	}
 
-	public function handle_pageview_pixel() {
-		$this->pixel->inject_base_code( $this->pageview_event_id );
-	}
+	/**
+	 * Inicjuje Pixel w <head> i od razu odpala PageView:
+	 * - event_id generowany w JS (unikalny per pageload, działa na cached pages),
+	 * - CAPI wywołane przez fetch do admin-ajax.php (PHP uruchamia się poza cache).
+	 */
+	public function handle_pageview() {
+		$this->pixel->inject_base_code();
 
-	public function handle_pageview_capi() {
-		if ( is_admin() ) {
+		if ( ! get_option( 'mcs_pixel_id', '' ) ) {
 			return;
 		}
-		$this->capi->send_event( 'PageView', [], $this->pageview_event_id );
+		$ajax_url = admin_url( 'admin-ajax.php' );
+		?>
+		<script>
+		(function() {
+			var id = typeof crypto !== 'undefined' && crypto.randomUUID
+				? 'mcs_pv_' + crypto.randomUUID()
+				: 'mcs_pv_' + Math.random().toString(36).slice(2, 11) + '_' + Date.now();
+			fbq('track', 'PageView', {}, {eventID: id});
+			fetch('<?php echo esc_url( $ajax_url ); ?>', {
+				method: 'POST',
+				headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+				body: new URLSearchParams({action: 'mcs_capi_event', event_name: 'PageView', event_id: id}),
+				keepalive: true
+			});
+		})();
+		</script>
+		<?php
 	}
 
 	public function handle_viewcontent() {
 		if ( ! ( is_single() || is_page() ) ) {
 			return;
 		}
+		if ( ! get_option( 'mcs_pixel_id', '' ) ) {
+			return;
+		}
 
-		$event_id = uniqid( 'mcs_vc_', true );
-		$params   = [
-			'content_name' => get_the_title(),
-			'content_type' => 'product',
-		];
+		$content_name = get_the_title();
+		$ajax_url     = admin_url( 'admin-ajax.php' );
+		?>
+		<script>
+		(function() {
+			if (typeof fbq === 'undefined') return;
+			var id = typeof crypto !== 'undefined' && crypto.randomUUID
+				? 'mcs_vc_' + crypto.randomUUID()
+				: 'mcs_vc_' + Math.random().toString(36).slice(2, 11) + '_' + Date.now();
+			var params = {
+				content_name: <?php echo wp_json_encode( $content_name ); ?>,
+				content_type: 'product'
+			};
+			fbq('track', 'ViewContent', params, {eventID: id});
+			fetch('<?php echo esc_url( $ajax_url ); ?>', {
+				method: 'POST',
+				headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+				body: new URLSearchParams({
+					action: 'mcs_capi_event',
+					event_name: 'ViewContent',
+					event_id: id,
+					'custom_data[content_name]': params.content_name,
+					'custom_data[content_type]': params.content_type
+				}),
+				keepalive: true
+			});
+		})();
+		</script>
+		<?php
+	}
 
-		$this->pixel->fire_event( 'ViewContent', $params, $event_id );
-		$this->capi->send_event( 'ViewContent', [ 'custom_data' => $params ], $event_id );
+	/**
+	 * Odbiera wywołania CAPI z JS fetch — admin-ajax.php nie jest cachowany,
+	 * więc PHP wykonuje się zawsze, nawet gdy strona główna pochodzi z cache.
+	 */
+	public function handle_ajax_capi() {
+		$allowed    = [ 'PageView', 'ViewContent' ];
+		$event_name = isset( $_POST['event_name'] ) ? sanitize_text_field( $_POST['event_name'] ) : '';
+		$event_id   = isset( $_POST['event_id'] )   ? sanitize_text_field( $_POST['event_id'] )   : '';
+
+		if ( ! in_array( $event_name, $allowed, true ) ) {
+			wp_die( '', '', [ 'response' => 400 ] );
+		}
+
+		$event_data = [];
+		if ( ! empty( $_POST['custom_data'] ) && is_array( $_POST['custom_data'] ) ) {
+			$event_data['custom_data'] = array_map( 'sanitize_text_field', $_POST['custom_data'] );
+		}
+
+		$this->capi->send_event( $event_name, $event_data, $event_id );
+		wp_die();
 	}
 
 	/**

@@ -5,14 +5,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MCS_Pixel {
 
-	/** Wstrzykuje bazowy snippet Meta Pixel do <head>. */
-	public function inject_base_code( $event_id = '' ) {
+	/** Wstrzykuje bazowy snippet Meta Pixel do <head> (tylko init — PageView przez mcs_fire_js). */
+	public function inject_base_code() {
 		$pixel_id = get_option( 'mcs_pixel_id', '' );
 		if ( ! $pixel_id ) {
 			return;
 		}
-
-		$event_id_js = $event_id ? esc_js( $event_id ) : '';
 		?>
 		<!-- Meta Pixel — MCS -->
 		<script>
@@ -22,11 +20,6 @@ class MCS_Pixel {
 		t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
 		document,'script','https://connect.facebook.net/en_US/fbevents.js');
 		fbq('init', '<?php echo esc_js( $pixel_id ); ?>');
-		<?php if ( $event_id_js ) : ?>
-		fbq('track', 'PageView', {}, {eventID: '<?php echo $event_id_js; ?>'});
-		<?php else : ?>
-		fbq('track', 'PageView');
-		<?php endif; ?>
 		</script>
 		<noscript><img height="1" width="1" style="display:none"
 		src="https://www.facebook.com/tr?id=<?php echo esc_attr( $pixel_id ); ?>&ev=PageView&noscript=1"/></noscript>
