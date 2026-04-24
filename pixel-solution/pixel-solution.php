@@ -35,8 +35,8 @@ add_action( 'admin_menu', 'mcs_pixel_register_menu' );
 function mcs_pixel_register_menu() {
 	require_once MCS_PIXEL_DIR . 'admin/settings-page.php';
 	add_options_page(
-		'MCS Meta Pixel',
-		'MCS Meta Pixel',
+		'PixelSolution',
+		'PixelSolution',
 		'manage_options',
 		'mcs-meta-pixel',
 		'mcs_pixel_render_settings_page'
