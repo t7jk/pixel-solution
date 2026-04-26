@@ -245,7 +245,7 @@ function pixel_solution_render_settings_page() {
 					</thead>
 					<tbody>
 						<?php foreach ( $form_plugins as $plugin_key => $plugin ) :
-							$selected_arr = $form_events[ $plugin_key ] ?? ( $plugin['detected'] ? [ 'Lead' ] : [] );
+							$selected_arr = $form_events[ $plugin_key ] ?? ( $plugin['detected'] ? [ 'CompleteRegistration' ] : [] );
 							$selected     = $selected_arr[0] ?? '';
 						?>
 						<tr<?php echo ! $plugin['detected'] ? ' style="opacity:0.4;"' : ''; ?>>
@@ -289,7 +289,7 @@ function pixel_solution_render_settings_page() {
 				</table>
 				<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
 					<button type="button" id="mcs-form-events-restore" class="button">&#8635; Restore Default</button>
-					<span style="color:#888;font-size:12px;">Default: Lead for each detected plugin</span>
+					<span style="color:#888;font-size:12px;">Default: CompleteRegistration for each detected plugin</span>
 				</div>
 				<?php submit_button( 'Save Settings' ); ?>
 			</div>
@@ -736,7 +736,7 @@ function pixel_solution_render_settings_page() {
 				var row = rbs[0].closest('tr');
 				var detected = row && row.style.opacity !== '0.4';
 				rbs.forEach(function(rb) {
-					rb.checked = detected ? rb.dataset.event === 'Lead' : rb.dataset.event === '';
+					rb.checked = detected ? rb.dataset.event === 'CompleteRegistration' : rb.dataset.event === '';
 				});
 			});
 		});
