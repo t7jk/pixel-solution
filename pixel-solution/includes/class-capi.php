@@ -25,8 +25,8 @@ class MCS_CAPI {
 		$source_url = ( is_ssl() ? 'https' : 'http' ) . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 
 		$user_data = [
-			'client_ip_address' => hash( 'sha256', sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' ) ),
-			'client_user_agent' => hash( 'sha256', sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ),
+			'client_ip_address' => sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' ),
+			'client_user_agent' => sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ?? '' ),
 		];
 
 		if ( ! empty( $_COOKIE['_fbc'] ) ) {
@@ -36,13 +36,32 @@ class MCS_CAPI {
 			$user_data['fbp'] = sanitize_text_field( $_COOKIE['_fbp'] );
 		}
 
+		$extra_user_data = $event_data['user_data'] ?? [];
+		unset( $event_data['user_data'] );
+
+		$wp_user = wp_get_current_user();
+		if ( $wp_user->exists() ) {
+			if ( ! isset( $extra_user_data['em'] ) && $wp_user->user_email ) {
+				$user_data['em'] = hash( 'sha256', strtolower( trim( $wp_user->user_email ) ) );
+			}
+			if ( ! isset( $extra_user_data['fn'] ) && $wp_user->first_name ) {
+				$user_data['fn'] = hash( 'sha256', strtolower( trim( $wp_user->first_name ) ) );
+			}
+			if ( ! isset( $extra_user_data['ln'] ) && $wp_user->last_name ) {
+				$user_data['ln'] = hash( 'sha256', strtolower( trim( $wp_user->last_name ) ) );
+			}
+			if ( ! isset( $extra_user_data['external_id'] ) ) {
+				$user_data['external_id'] = hash( 'sha256', (string) $wp_user->ID );
+			}
+		}
+
 		$payload_event = array_merge(
 			[
 				'event_name'       => $event_name,
 				'event_time'       => time(),
 				'event_source_url' => $source_url,
 				'action_source'    => 'website',
-				'user_data'        => $user_data,
+				'user_data'        => array_merge( $user_data, $extra_user_data ),
 			],
 			$event_data
 		);
@@ -78,5 +97,27 @@ class MCS_CAPI {
 		if ( 200 !== (int) $code ) {
 			error_log( '[MCS CAPI] HTTP ' . $code . ' — ' . wp_remote_retrieve_body( $response ) );
 		}
+
+		// Loguj zdarzenie (URL: dla AJAX użyj Referer zamiast admin-ajax.php)
+		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+		if ( str_contains( $request_uri, 'admin-ajax' ) ) {
+			$log_url = sanitize_text_field( $_SERVER['HTTP_REFERER'] ?? '' );
+		} else {
+			$log_url = $source_url;
+		}
+		$merged_ud = array_merge( $user_data, $extra_user_data );
+		MCS_Log::write( [
+			'ts'      => time(),
+			'event'   => $event_name,
+			'source'  => 'capi',
+			'status'  => (int) $code,
+			'id'      => $event_id ?: '',
+			'url'     => $log_url,
+			'has_em'  => ! empty( $merged_ud['em'] ),
+			'has_ph'  => ! empty( $merged_ud['ph'] ),
+			'has_fn'  => ! empty( $merged_ud['fn'] ),
+			'has_ln'  => ! empty( $merged_ud['ln'] ),
+			'has_xid' => ! empty( $merged_ud['external_id'] ),
+		] );
 	}
 }

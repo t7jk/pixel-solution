@@ -3,7 +3,7 @@
  * Plugin Name: Pixel Solution
  * Plugin URI:  https://x.com/tomas3man
  * Description: Sends events to Meta via browser Pixel and server-side Conversions API (CAPI). Supports PageView, ViewContent and Lead with automatic Contact Form 7 integration and event deduplication.
- * Version:     1.0.0
+ * Version:     1.1.0
  * Author:      Tomasz Kalinowski
  * Author URI:  https://x.com/tomas3man
  * License:     GPL-2.0-or-later
@@ -13,10 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'PIXEL_SOLUTION_VERSION', '1.0.0' );
+define( 'PIXEL_SOLUTION_VERSION', '1.1.0' );
 define( 'PIXEL_SOLUTION_DIR', plugin_dir_path( __FILE__ ) );
 define( 'PIXEL_SOLUTION_SLUG', 'pixel-solution' );
 
+require_once PIXEL_SOLUTION_DIR . 'includes/class-log.php';
 require_once PIXEL_SOLUTION_DIR . 'includes/class-pixel.php';
 require_once PIXEL_SOLUTION_DIR . 'includes/class-capi.php';
 require_once PIXEL_SOLUTION_DIR . 'includes/class-events.php';
