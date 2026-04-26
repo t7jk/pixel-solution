@@ -153,7 +153,7 @@ function pixel_solution_render_settings_page() {
 	$active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'first-step';
 	$tabs = [
 		'first-step'   => 'First Step',
-		'form-events'  => 'Form Plugin Events',
+		'form-events'  => 'Form Events',
 		'woo-events'   => 'WooCommerce Events',
 		'hook-map'     => 'Advanced Hook Map',
 		'test-code'    => 'Test Event Code',
@@ -230,7 +230,7 @@ function pixel_solution_render_settings_page() {
 
 			<?php /* ═══ TAB 2: Form Plugin Events ═══ */ ?>
 			<div id="mcs-tab-form-events" class="mcs-tab-panel" style="display:none;">
-				<h2 style="margin-top:16px;">Form Plugin Events</h2>
+				<h2 style="margin-top:16px;">Form Events</h2>
 				<p style="color:#666;max-width:680px;">
 					Select which Meta event fires when a form is submitted. One event per plugin — both browser-side (Pixel) and server-side (CAPI) are sent automatically.
 				</p>
