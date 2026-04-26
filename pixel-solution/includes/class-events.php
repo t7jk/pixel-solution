@@ -8,6 +8,9 @@ class MCS_Events {
 	private $pixel;
 	private $capi;
 
+	private $woo_purchase_event_id = '';
+	private $woo_purchase_data     = [];
+
 	// Hook PHP każdego obsługiwanego pluginu formularzy.
 	private const FORM_PLUGIN_HOOKS = [
 		'cf7'     => 'wpcf7_before_send_mail',
@@ -32,6 +35,8 @@ class MCS_Events {
 	public function register_hooks() {
 		add_action( 'wp_head', [ $this, 'handle_pageview' ] );
 		add_action( 'wp_footer', [ $this, 'handle_viewcontent' ] );
+		add_action( 'wp_footer', [ $this, 'handle_search' ] );
+		add_action( 'wp_footer', [ $this, 'handle_woo_purchase_pixel' ] );
 
 		// AJAX endpoint dla CAPI — działa nawet gdy strona pochodzi z cache.
 		add_action( 'wp_ajax_nopriv_mcs_capi_event', [ $this, 'handle_ajax_capi' ] );
@@ -91,6 +96,21 @@ class MCS_Events {
 
 		$content_name = get_the_title();
 		$ajax_url     = admin_url( 'admin-ajax.php' );
+
+		$woo_data = null;
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			global $product;
+			if ( ! ( $product instanceof WC_Product ) ) {
+				$product = wc_get_product( get_the_ID() );
+			}
+			if ( $product ) {
+				$woo_data = [
+					'content_ids' => [ (string) $product->get_id() ],
+					'value'       => (float) $product->get_price(),
+					'currency'    => get_woocommerce_currency(),
+				];
+			}
+		}
 		?>
 		<script>
 		(function() {
@@ -102,19 +122,80 @@ class MCS_Events {
 				content_name: <?php echo wp_json_encode( $content_name ); ?>,
 				content_type: 'product'
 			};
+			<?php if ( $woo_data ) : ?>
+			params.content_ids = <?php echo wp_json_encode( $woo_data['content_ids'] ); ?>;
+			params.value       = <?php echo (float) $woo_data['value']; ?>;
+			params.currency    = <?php echo wp_json_encode( $woo_data['currency'] ); ?>;
+			<?php endif; ?>
 			fbq('track', 'ViewContent', params, {eventID: id});
+			var body = new URLSearchParams({
+				action:                       'mcs_capi_event',
+				event_name:                   'ViewContent',
+				event_id:                     id,
+				'custom_data[content_name]':  params.content_name,
+				'custom_data[content_type]':  params.content_type
+			});
+			<?php if ( $woo_data ) : ?>
+			body.set('custom_data[value]',    String(params.value));
+			body.set('custom_data[currency]', params.currency);
+			params.content_ids.forEach(function(cid) {
+				body.append('custom_data[content_ids][]', cid);
+			});
+			<?php endif; ?>
+			fetch('<?php echo esc_url( $ajax_url ); ?>', {
+				method: 'POST',
+				headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+				body: body,
+				keepalive: true
+			});
+		})();
+		</script>
+		<?php
+	}
+
+	public function handle_search() {
+		if ( ! is_search() || ! get_option( 'mcs_pixel_id', '' ) ) {
+			return;
+		}
+		$query    = get_search_query();
+		$ajax_url = admin_url( 'admin-ajax.php' );
+		?>
+		<script>
+		(function() {
+			if (typeof fbq === 'undefined') return;
+			var id = typeof crypto !== 'undefined' && crypto.randomUUID
+				? 'mcs_s_' + crypto.randomUUID()
+				: 'mcs_s_' + Math.random().toString(36).slice(2, 11) + '_' + Date.now();
+			var params = { search_string: <?php echo wp_json_encode( $query ); ?> };
+			fbq('track', 'Search', params, {eventID: id});
 			fetch('<?php echo esc_url( $ajax_url ); ?>', {
 				method: 'POST',
 				headers: {'Content-Type': 'application/x-www-form-urlencoded'},
 				body: new URLSearchParams({
-					action: 'mcs_capi_event',
-					event_name: 'ViewContent',
-					event_id: id,
-					'custom_data[content_name]': params.content_name,
-					'custom_data[content_type]': params.content_type
+					action:                           'mcs_capi_event',
+					event_name:                       'Search',
+					event_id:                         id,
+					'custom_data[search_string]':     params.search_string
 				}),
 				keepalive: true
 			});
+		})();
+		</script>
+		<?php
+	}
+
+	public function handle_woo_purchase_pixel() {
+		if ( ! $this->woo_purchase_event_id || ! get_option( 'mcs_pixel_id', '' ) ) {
+			return;
+		}
+		?>
+		<script>
+		(function() {
+			if (typeof fbq === 'undefined') return;
+			fbq('track', 'Purchase',
+				<?php echo wp_json_encode( $this->woo_purchase_data ); ?>,
+				{ eventID: <?php echo wp_json_encode( $this->woo_purchase_event_id ); ?> }
+			);
 		})();
 		</script>
 		<?php
@@ -125,7 +206,7 @@ class MCS_Events {
 	 * więc PHP wykonuje się zawsze, nawet gdy strona główna pochodzi z cache.
 	 */
 	public function handle_ajax_capi() {
-		$allowed    = [ 'PageView', 'ViewContent' ];
+		$allowed    = [ 'PageView', 'ViewContent', 'Search' ];
 		$event_name = isset( $_POST['event_name'] ) ? sanitize_text_field( $_POST['event_name'] ) : '';
 		$event_id   = isset( $_POST['event_id'] )   ? sanitize_text_field( $_POST['event_id'] )   : '';
 
@@ -135,7 +216,12 @@ class MCS_Events {
 
 		$event_data = [];
 		if ( ! empty( $_POST['custom_data'] ) && is_array( $_POST['custom_data'] ) ) {
-			$event_data['custom_data'] = array_map( 'sanitize_text_field', $_POST['custom_data'] );
+			foreach ( $_POST['custom_data'] as $k => $v ) {
+				$key = sanitize_key( $k );
+				$event_data['custom_data'][ $key ] = is_array( $v )
+					? array_map( 'sanitize_text_field', $v )
+					: sanitize_text_field( $v );
+			}
 		}
 
 		$this->capi->send_event( $event_name, $event_data, $event_id );
@@ -197,9 +283,37 @@ class MCS_Events {
 			$hook       = self::WOO_TRIGGER_MAP[ $trigger_key ]['hook'];
 			$event_name = self::WOO_TRIGGER_MAP[ $trigger_key ]['event'];
 			$capi       = $this->capi;
-			add_action( $hook, function() use ( $event_name, $capi ) {
-				$capi->send_event( $event_name, [], uniqid( 'mcs_woo_', true ) );
-			} );
+
+			if ( 'purchase' === $trigger_key ) {
+				add_action( $hook, function( $order_id ) use ( $event_name, $capi ) {
+					$order = wc_get_order( $order_id );
+					if ( ! $order ) return;
+
+					$content_ids = [];
+					foreach ( $order->get_items() as $item ) {
+						$content_ids[] = (string) $item->get_product_id();
+					}
+
+					$event_id   = uniqid( 'mcs_woo_', true );
+					$event_data = [
+						'custom_data' => [
+							'value'        => (float) $order->get_total(),
+							'currency'     => $order->get_currency(),
+							'content_ids'  => $content_ids,
+							'content_type' => 'product',
+						],
+					];
+
+					$this->woo_purchase_event_id = $event_id;
+					$this->woo_purchase_data     = $event_data['custom_data'];
+
+					$capi->send_event( $event_name, $event_data, $event_id );
+				}, 10, 1 );
+			} else {
+				add_action( $hook, function() use ( $event_name, $capi ) {
+					$capi->send_event( $event_name, [], uniqid( 'mcs_woo_', true ) );
+				} );
+			}
 		}
 	}
 
