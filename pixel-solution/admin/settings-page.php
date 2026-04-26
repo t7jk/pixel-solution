@@ -232,20 +232,21 @@ function pixel_solution_render_settings_page() {
 			<div id="mcs-tab-form-events" class="mcs-tab-panel" style="display:none;">
 				<h2 style="margin-top:16px;">Form Plugin Events</h2>
 				<p style="color:#666;max-width:680px;">
-					Select which Meta events fire when a form is submitted. Both browser-side (Pixel) and server-side (CAPI) events are sent automatically for each checked item.
+					Select which Meta event fires when a form is submitted. One event per plugin — both browser-side (Pixel) and server-side (CAPI) are sent automatically.
 				</p>
 
-				<table class="widefat" style="max-width:820px;margin-bottom:20px;">
+				<table class="widefat" style="max-width:820px;margin-bottom:12px;">
 					<thead>
 						<tr>
 							<th style="width:20%;">Plugin</th>
 							<th style="width:12%;">Status</th>
-							<th>Events fired on submission</th>
+							<th>Event fired on submission</th>
 						</tr>
 					</thead>
 					<tbody>
 						<?php foreach ( $form_plugins as $plugin_key => $plugin ) :
-							$selected = $form_events[ $plugin_key ] ?? ( $plugin['detected'] ? [ 'Lead' ] : [] );
+							$selected_arr = $form_events[ $plugin_key ] ?? ( $plugin['detected'] ? [ 'Lead' ] : [] );
+							$selected     = $selected_arr[0] ?? '';
 						?>
 						<tr<?php echo ! $plugin['detected'] ? ' style="opacity:0.4;"' : ''; ?>>
 							<td><strong><?php echo esc_html( $plugin['label'] ); ?></strong></td>
@@ -258,13 +259,23 @@ function pixel_solution_render_settings_page() {
 							</td>
 							<td>
 								<?php if ( $plugin['detected'] ) : ?>
+									<label style="display:inline-flex;align-items:center;gap:5px;margin-right:16px;white-space:nowrap;">
+										<input type="radio"
+											class="mcs-form-event-rb"
+											name="mcs_form_event_<?php echo esc_attr( $plugin_key ); ?>"
+											data-plugin="<?php echo esc_attr( $plugin_key ); ?>"
+											data-event=""
+											<?php checked( $selected === '' ); ?> />
+										<em style="color:#aaa;">None</em>
+									</label>
 									<?php foreach ( $available_form_events as $event_name ) : ?>
 									<label style="display:inline-flex;align-items:center;gap:5px;margin-right:16px;white-space:nowrap;">
-										<input type="checkbox"
-											class="mcs-form-event-cb"
+										<input type="radio"
+											class="mcs-form-event-rb"
+											name="mcs_form_event_<?php echo esc_attr( $plugin_key ); ?>"
 											data-plugin="<?php echo esc_attr( $plugin_key ); ?>"
 											data-event="<?php echo esc_attr( $event_name ); ?>"
-											<?php checked( in_array( $event_name, $selected, true ) ); ?> />
+											<?php checked( $selected === $event_name ); ?> />
 										<?php echo esc_html( $event_name ); ?>
 									</label>
 									<?php endforeach; ?>
@@ -276,6 +287,10 @@ function pixel_solution_render_settings_page() {
 						<?php endforeach; ?>
 					</tbody>
 				</table>
+				<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+					<button type="button" id="mcs-form-events-restore" class="button">&#8635; Restore Default</button>
+					<span style="color:#888;font-size:12px;">Default: Lead for each detected plugin</span>
+				</div>
 				<?php submit_button( 'Save Settings' ); ?>
 			</div>
 
@@ -315,6 +330,12 @@ function pixel_solution_render_settings_page() {
 						<?php endforeach; ?>
 					</tbody>
 				</table>
+				<?php endif; ?>
+				<?php if ( $woo_detected ) : ?>
+				<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+					<button type="button" id="mcs-woo-restore" class="button">&#8635; Restore Default</button>
+					<span style="color:#888;font-size:12px;">Default: all triggers disabled</span>
+				</div>
 				<?php endif; ?>
 				<?php submit_button( 'Save Settings' ); ?>
 			</div>
@@ -374,6 +395,7 @@ function pixel_solution_render_settings_page() {
 
 				<button type="button" id="mcs-add-hook" class="button" style="margin-bottom:20px;">+ Add Row</button>
 				<button type="button" id="mcs-discover-btn" class="button" style="margin-bottom:20px;margin-left:8px;">&#128269; Discover Hooks</button>
+				<button type="button" id="mcs-hookmap-restore" class="button" style="margin-bottom:20px;margin-left:8px;">&#8635; Restore Default</button>
 
 				<div id="mcs-discover-panel" style="display:none;max-width:820px;border:1px solid #c3c4c7;background:#f9f9f9;padding:16px;margin-bottom:20px;">
 					<strong>Available hooks from active plugins</strong>
@@ -538,12 +560,12 @@ function pixel_solution_render_settings_page() {
 				});
 				document.getElementById('mcs-hook-map-json').value = JSON.stringify(map);
 
-				// Form events
+				// Form events — one radio per plugin
 				var config = {};
-				document.querySelectorAll('.mcs-form-event-cb:checked').forEach(function(cb) {
-					var plugin = cb.dataset.plugin;
-					if (!config[plugin]) config[plugin] = [];
-					config[plugin].push(cb.dataset.event);
+				document.querySelectorAll('.mcs-form-event-rb:checked').forEach(function(rb) {
+					var plugin = rb.dataset.plugin;
+					var event  = rb.dataset.event;
+					if (event) config[plugin] = [event];
 				});
 				document.getElementById('mcs-form-events-json').value = JSON.stringify(config);
 
@@ -700,6 +722,36 @@ function pixel_solution_render_settings_page() {
 		}
 
 		document.getElementById('mcs-log-refresh').addEventListener('click', loadLog);
+
+		// ── Restore Default buttons ──
+		document.getElementById('mcs-form-events-restore').addEventListener('click', function() {
+			// Set each plugin group: Lead if plugin row is visible (not faded), else None
+			var groups = {};
+			document.querySelectorAll('.mcs-form-event-rb').forEach(function(rb) {
+				groups[rb.dataset.plugin] = groups[rb.dataset.plugin] || [];
+				groups[rb.dataset.plugin].push(rb);
+			});
+			Object.keys(groups).forEach(function(plugin) {
+				var rbs = groups[plugin];
+				var row = rbs[0].closest('tr');
+				var detected = row && row.style.opacity !== '0.4';
+				rbs.forEach(function(rb) {
+					rb.checked = detected ? rb.dataset.event === 'Lead' : rb.dataset.event === '';
+				});
+			});
+		});
+
+		var wooRestoreBtn = document.getElementById('mcs-woo-restore');
+		if (wooRestoreBtn) {
+			wooRestoreBtn.addEventListener('click', function() {
+				document.querySelectorAll('.mcs-woo-cb').forEach(function(cb) { cb.checked = false; });
+			});
+		}
+
+		document.getElementById('mcs-hookmap-restore').addEventListener('click', function() {
+			if (!confirm('Clear all custom hook entries?')) return;
+			document.getElementById('mcs-hook-tbody').innerHTML = '';
+		});
 
 		document.getElementById('mcs-log-clear').addEventListener('click', function() {
 			if (!confirm('Clear all event log entries?')) return;
