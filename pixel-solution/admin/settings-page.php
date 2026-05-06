@@ -215,7 +215,7 @@ function pixel_solution_render_settings_page() {
 					<tr>
 						<th scope="row"><label for="mcs_capi_token">Access Token CAPI</label></th>
 						<td>
-							<input type="password" id="mcs_capi_token" name="mcs_capi_token"
+							<input type="text" id="mcs_capi_token" name="mcs_capi_token"
 								value="<?php echo esc_attr( $capi_token ); ?>"
 								class="regular-text" />
 							<p class="description">
